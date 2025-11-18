@@ -10,7 +10,7 @@ A real-time audio visualization tool that plays a WAV file and displays both a w
 
 ## How It's Made
 
-**Tech used:** Python, NumPy, Matplotlib, SimpleAudio, Python's built-in `wave` module  
+**Tech used:** Python, NumPy (Version < 2), Matplotlib, SimpleAudio, Python's built-in `wave` module  
 
 The project starts by reading the audio file using Python’s built-in `wave` module. This module allows us to open a WAV file and extract information like the sample rate, number of channels, sample width, and total number of frames. These details are necessary because they tell the program how to interpret the raw audio data.
 

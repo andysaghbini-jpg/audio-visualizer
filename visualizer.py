@@ -1,18 +1,16 @@
-# visualizer.py
 import wave
+import time
 import numpy as np
 import simpleaudio as sa
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib import cm
 
-FILENAME = "society.wav"
+FILENAME = "runaway.wav"
 CHUNK = 2048
 CHANNEL = 0
 
-# -----------------------
 # Load WAV
-# -----------------------
+
 wf = wave.open(FILENAME, 'rb')
 sr = wf.getframerate()
 n_channels = wf.getnchannels()
@@ -27,76 +25,79 @@ if n_channels == 2:
 
 audio = audio.astype(np.float32) / (2**(8*sampwidth - 1))
 
-# -----------------------
-# Playback
-# -----------------------
-play_obj = sa.play_buffer((audio * 32767).astype(np.int16), 1, 2, sr)
-
-# -----------------------
 # Setup plots
-# -----------------------
-fig, (ax_wave, ax_fft) = plt.subplots(2, 1, figsize=(10, 6))
-plt.subplots_adjust(hspace=0.5)  # spread the plots apart
 
+fig, (ax_wave, ax_fft) = plt.subplots(2, 1, figsize=(10, 6))
+plt.subplots_adjust(hspace=0.5)
+
+# Waveform Plot
 x = np.arange(CHUNK)
-line, = ax_wave.plot(x, np.zeros(CHUNK), color='purple')
+line, = ax_wave.plot(x, np.zeros(CHUNK), color='purple', lw=1.5)
 ax_wave.set_ylim(-1.0, 1.0)
 ax_wave.set_xlim(0, CHUNK)
 ax_wave.set_title("Waveform", color='white')
 ax_wave.set_facecolor('black')
 ax_wave.tick_params(colors='white')
 
+# Spectrum Analyzer Plot
 freqs = np.fft.rfftfreq(CHUNK, 1/sr)
-bars = ax_fft.bar(freqs, np.zeros_like(freqs), width=freqs[1]-freqs[0], color='magenta')
+line_fft, = ax_fft.plot(freqs, np.zeros_like(freqs), color='magenta', lw=2)
+fill_fft = ax_fft.fill_between(freqs, -80, np.zeros_like(freqs), color='magenta', alpha=0.3)
+
 ax_fft.set_xlim(0, 20000)
 ax_fft.set_ylim(-80, 0)
 ax_fft.set_title("Spectrum Analyzer", color='white')
 ax_fft.set_facecolor('black')
 ax_fft.tick_params(colors='white')
 
-# Set figure background dark
 fig.patch.set_facecolor('black')
 
-pos = 0
-energy_history = []
+start_time = None
 
-# colormap for bars
-cmap = cm.plasma
 
-# -----------------------
 # Update function
-# -----------------------
+
 def update(frame):
-    global pos, energy_history
+    global start_time, fill_fft
+    
+    if start_time is None:
+        return line, line_fft
+    
+    elapsed = time.time() - start_time
+    pos = int(elapsed * sr)
+    
+    if pos >= len(audio):
+        return line, line_fft
+
     seg = audio[pos:pos + CHUNK]
     if len(seg) < CHUNK:
         seg = np.pad(seg, (0, CHUNK - len(seg)))
 
-    # waveform
+    # 1. Update Waveform
     line.set_ydata(seg)
 
-    # FFT
+    # 2. Update FFT
     fft = np.abs(np.fft.rfft(seg))
     fft_db = 20 * np.log10(fft + 1e-6)
+    line_fft.set_ydata(fft_db)
+    
+    verts = fill_fft.get_paths()[0].vertices
+    verts[1:len(fft_db)+1, 1] = fft_db 
 
-    # simple color mapping (amplitude to color)
-    fft_norm = (fft_db - np.min(fft_db)) / (np.max(fft_db) - np.min(fft_db) + 1e-6)
-    for bar, h, c in zip(bars, fft_db, fft_norm):
-        bar.set_height(h)
-        bar.set_color(cmap(c))
+    rms = np.sqrt(np.mean(seg**2))
+    pulse = min(rms * 2, 0.2)  
+    pulse_color = (pulse, pulse, pulse) 
+    ax_wave.set_facecolor(pulse_color)
 
-   
-    ax_wave.set_facecolor('black')
+    return line, line_fft, fill_fft
 
-    pos += CHUNK
-    if pos >= len(audio):
-        pos = 0
+# Animation & Playback
 
-    return (line, *bars)
+animation = FuncAnimation(fig, update, interval=30, blit=True)
+play_obj = sa.play_buffer((audio * 32767).astype(np.int16), 1, 2, sr)
+start_time = time.time() 
 
-# -----------------------
-# Animation
-# -----------------------
-animation = FuncAnimation(fig, update, interval=1000 * CHUNK / sr, blit=True)
 plt.show()
-play_obj.wait_done()
+
+if play_obj.is_playing():
+    play_obj.stop()
